@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>휘매쓰 연산 챌린지!</title>
+<title>진분수의 뺄셈</title>
 <style>
     body {
         font-family: Arial, sans-serif; 
@@ -84,6 +84,14 @@
         color:red; 
         font-weight:bold;
     }
+    #response {
+        margin-top: 20px;
+        white-space: pre-wrap; /* 줄바꿈 유지 */
+        font-size: 14px;
+        background: #f2f2f2;
+        padding: 10px;
+        border-radius: 5px;
+    }
 </style>
 
 <!-- MathJax 로드 -->
@@ -91,10 +99,18 @@
 </head>
 <body>
 <div class="container">
-    <h1>휘매쓰 연산 챌린지!</h1>
-    <!-- 난이도 선택 화면 -->
+    <!-- 게임 제목 -->
+    <h1>진분수의 뺄셈</h1>
+
+    <!-- 첫 화면(이름 + 난이도 선택) -->
     <div id="difficulty-screen">
-        <h2>난이도를 선택하세요</h2>
+        <h2>이름을 입력하고 난이도를 선택하세요</h2>
+        <div style="text-align:center; margin-bottom:20px;">
+            <label>이름: 
+                <input type="text" id="playerName" placeholder="이름을 입력하세요">
+            </label>
+        </div>
+
         <div class="difficulty-select">
             <button onclick="startGame('top')">최상 (20초, 문제당 20점)</button>
             <button onclick="startGame('high')">상 (30초, 문제당 15점)</button>
@@ -103,7 +119,7 @@
         </div>
     </div>
 
-    <!-- 게임 화면 -->
+    <!-- 실제 게임 화면 -->
     <div id="game-screen" class="hidden">
         <div class="top-info">
             <div>남은 기회: <span id="life"></span></div>
@@ -122,23 +138,32 @@
         <div class="answers" id="answers"></div>
         <div class="score-info" id="message"></div>
     </div>
+
+    <!-- 서버 응답 영역 -->
+    <div id="response"></div>
 </div>
 
 <script>
-    // 전역 상태
+    // ========= 전역 상태 =========
     let difficulty = null;
-    let timeLimit = 0;  // 각 문제별 제한시간
-    let scorePerQuestion = 0;
-    let life = 3;
-    let score = 0;
-    let totalElapsed = 0;
-    let timerInterval = null;
-    let totalTimerInterval = null;
-    let currentAnswer = null;
-    let currentDenom = null;
-    let infiniteMode = true; // 무한 문제 모드
+    let timeLimit = 0;        // 각 문제별 제한시간
+    let scorePerQuestion = 0; // 문제당 점수
+    let life = 3;             // 목숨
+    let score = 0;            // 현재 점수
+    let totalElapsed = 0;     // 전체 경과 시간
+    let timerInterval = null; // 문제 타이머
+    let totalTimerInterval = null;  // 전체 타이머
+    let currentAnswer = null; // 현재 정답(분자)
+    let currentDenom = null;  // 현재 분모
+    let playerName = '';      // 플레이어 이름
 
+    // ========== 게임 시작 함수 ==========
     function startGame(diff) {
+        // 이름 입력값 읽기
+        const nameInput = document.getElementById('playerName').value.trim();
+        playerName = nameInput ? nameInput : '이름없음'; // 빈칸이면 기본값
+
+        // 난이도 설정
         difficulty = diff;
         switch(diff) {
             case 'top':
@@ -159,42 +184,46 @@
                 break;
         }
 
+        // 화면 전환
         document.getElementById('difficulty-screen').classList.add('hidden');
         document.getElementById('game-screen').classList.remove('hidden');
         document.getElementById('life').textContent = life;
 
-        // 전체 게임 시간 타이머 시작
+        // 전체 경과 시간 타이머 시작
         totalTimerInterval = setInterval(() => {
             totalElapsed++;
             document.getElementById('total-time').textContent = totalElapsed;
         }, 1000);
 
+        // 첫 문제 출제
         nextProblem();
     }
 
+    // ========== 다음 문제로 이동 ==========
     function nextProblem() {
         document.getElementById('message').textContent = '';
-        // 타이머 정리
+
+        // 문제 타이머 초기화
         if (timerInterval) clearInterval(timerInterval);
 
-        // 새로운 문제 생성
+        // 새 문제 생성
         let success = generateProblem();
         if(!success) {
-            // 문제 생성 실패시(오답생성 문제) 다시 시도
-            // 안전장치: 여러번 실패 시 다른 분모로 재시도
+            // 문제 생성 실패 시 재시도
             let retryCount = 0;
             while(!success && retryCount < 10) {
                 success = generateProblem();
                 retryCount++;
             }
             if(!success) {
-                // 10번 시도 후에도 실패하면(극히 드문 경우) 그냥 게임 종료
+                // 여전히 실패하면 게임 종료
                 document.getElementById('message').textContent = "문제 생성 오류. 게임을 종료합니다.";
                 endGame();
                 return;
             }
         }
 
+        // 제한시간이 있는 난이도인 경우 타이머 표시
         if (timeLimit > 0) {
             document.getElementById('energy-bar-container').classList.remove('hidden');
             startTimer();
@@ -204,6 +233,7 @@
         MathJax.typeset();
     }
 
+    // ========== 문제별 타이머 시작 ==========
     function startTimer() {
         let remainingTime = timeLimit;
         updateTimerBar(remainingTime);
@@ -226,44 +256,46 @@
         }, 1000);
     }
 
+    // ========== 타이머 바 업데이트 ==========
     function updateTimerBar(remainingTime) {
         const fill = document.getElementById('timer-fill');
         let widthPercent = (timeLimit === 0) ? 100 : (remainingTime / timeLimit) * 100;
         fill.style.width = widthPercent + '%';
     }
 
+    // ========== 문제 생성(진분수 뺄셈) ==========
     function generateProblem() {
-        // 문제 생성 시도
         // 분모: 2~9
         let denom = Math.floor(Math.random()*8)+2; // 2~9
         let a = Math.floor(Math.random()*(denom-1))+1; 
         let b = Math.floor(Math.random()*(denom-1))+1;
 
-        // a>b 되도록
+        // a>b 되도록 교환
         if (b > a) {
-            let temp = a; a = b; b = temp;
+            let temp = a; 
+            a = b; 
+            b = temp;
         }
 
         let result = a - b;
-        // 진분수가 되려면 result < denom 이어야 하며, result >= 0
+        // 진분수 조건: result < denom, result >= 0
         if(result < 0 || result >= denom) {
-            // 조건 안맞으면 실패 반환
             return false; 
         }
 
-        // 오답 생성
+        // 오답(분자) 생성
         let answers = [result];
         let attemptCount = 0;
         while (answers.length < 4 && attemptCount < 100) {
             attemptCount++;
             let wrong = Math.floor(Math.random()*denom)+1; // 1~denom
-            // 진분수 조건 wrong < denom
+            // 진분수 조건: wrong < denom
             if (wrong !== result && wrong < denom && wrong > 0 && !answers.includes(wrong)) {
                 answers.push(wrong);
             }
         }
 
-        // 혹시나 오답 생성을 못했다면 실패 처리
+        // 4개 미만이면 실패
         if(answers.length < 4) {
             return false;
         }
@@ -272,9 +304,11 @@
         currentAnswer = result;
         currentDenom = denom;
 
+        // 문제 영역 업데이트
         const questionEl = document.getElementById('question');
         questionEl.innerHTML = `\\(\\dfrac{${a}}{${denom}} - \\dfrac{${b}}{${denom}} = ?\\)`;
 
+        // 정답 버튼들 표시
         const answersEl = document.getElementById('answers');
         answersEl.innerHTML = '';
         answers.forEach(ans => {
@@ -287,8 +321,10 @@
         return true;
     }
 
+    // ========== 정답 체크 ==========
     function checkAnswer(userAns, denom) {
         if (timerInterval) clearInterval(timerInterval);
+
         if (userAns === currentAnswer) {
             // 정답
             score += scorePerQuestion;
@@ -307,21 +343,68 @@
         } else {
             setTimeout(() => { nextProblem(); }, 2000);
         }
-
         MathJax.typeset();
     }
 
+    // ========== 게임 종료 ==========
     function endGame() {
-        // 게임 종료 처리
         clearInterval(totalTimerInterval);
         if (timerInterval) clearInterval(timerInterval);
         document.getElementById('message').innerHTML += "<br>게임 종료! 최종 점수: " + score;
+        
+        // 점수 전송 버튼 추가
+        document.getElementById('message').innerHTML += 
+            "<br><button onclick='submitScore()'>점수 전송</button>";
     }
 
+    // ========== 점수 전송 처리 ==========
+    function submitScore() {
+        // 게임 이름, 이름, 점수, 경과시간
+        saveData("진분수의 뺄셈", playerName, score, totalElapsed);
+    }
+
+    // ========== 데이터 서버 전송 함수 ==========
+    async function saveData(game, name, score, elapsedTime) {
+        const FUNCTION_URL = "https://us-central1-record-f420d.cloudfunctions.net/report";
+        
+        const requestData = {
+            game,
+            name,
+            score: parseInt(score, 10),
+            elapsedTime: parseInt(elapsedTime, 10)
+        };
+
+        try {
+            // fetch는 비동기이므로 await 사용
+            const response = await fetch(FUNCTION_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestData)
+            });
+
+            const responseData = await response.json();
+
+            if (response.ok) {
+                document.getElementById('response').innerText = 
+                    `성공: ${JSON.stringify(responseData, null, 2)}`;
+            } else {
+                document.getElementById('response').innerText = 
+                    `오류: ${JSON.stringify(responseData, null, 2)}`;
+            }
+        } catch (error) {
+            console.error('요청 실패:', error);
+            document.getElementById('response').innerText = 
+                `네트워크 오류: ${error.message}`;
+        }
+    }
+
+    // ========== 배열 섞기 함수 ==========
     function shuffle(array) {
         for (let i = array.length -1; i>0; i--) {
             const j = Math.floor(Math.random()* (i+1));
-            [array[i], array[j]]=[array[j], array[i]];
+            [array[i], array[j]] = [array[j], array[i]];
         }
     }
 </script>
